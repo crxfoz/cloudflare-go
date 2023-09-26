@@ -13,6 +13,7 @@ import (
 
 var (
 	ErrMissingRulesetPhase = errors.New("missing required phase")
+	ErrMissingRulesetID    = errors.New("missing required ruleset ID")
 )
 
 const (
@@ -237,7 +238,6 @@ type RulesetRuleActionParameters struct {
 	CacheKey                 *RulesetRuleActionParametersCacheKey              `json:"cache_key,omitempty"`
 	OriginCacheControl       *bool                                             `json:"origin_cache_control,omitempty"`
 	OriginErrorPagePassthru  *bool                                             `json:"origin_error_page_passthru,omitempty"`
-	CacheReserve             *RulesetRuleActionParametersCacheReserve          `json:"cache_reserve,omitempty"`
 	FromList                 *RulesetRuleActionParametersFromList              `json:"from_list,omitempty"`
 	FromValue                *RulesetRuleActionParametersFromValue             `json:"from_value,omitempty"`
 	AutomaticHTTPSRewrites   *bool                                             `json:"automatic_https_rewrites,omitempty"`
@@ -315,11 +315,6 @@ type RulesetRuleActionParametersCacheKey struct {
 	IgnoreQueryStringsOrder *bool                                 `json:"ignore_query_strings_order,omitempty"`
 	CacheDeceptionArmor     *bool                                 `json:"cache_deception_armor,omitempty"`
 	CustomKey               *RulesetRuleActionParametersCustomKey `json:"custom_key,omitempty"`
-}
-
-type RulesetRuleActionParametersCacheReserve struct {
-	Eligible        *bool `json:"eligible,omitempty"`
-	MinimumFileSize *uint `json:"minimum_file_size,omitempty"`
 }
 
 type RulesetRuleActionParametersCustomKey struct {
@@ -719,6 +714,24 @@ type UpdateRulesetResponse struct {
 
 type ListRulesetsParams struct{}
 
+type Position struct {
+	Before string `json:"before,omitempty"`
+	After  string `json:"after,omitempty"`
+	Index  int    `json:"index,omitempty"`
+}
+
+type CreateRuleParams struct {
+	RulesetID        string                       `json:"-"`
+	Position         *Position                    `json:"position,omitempty"`
+	Action           string                       `json:"action"`
+	ActionParameters *RulesetRuleActionParameters `json:"action_parameters,omitempty"`
+	Description      string                       `json:"description,omitempty"`
+	Enabled          *bool                        `json:"enabled,omitempty"`
+	Expression       string                       `json:"expression"`
+	Logging          *RulesetRuleLogging          `json:"logging,omitempty"`
+	Ref              string                       `json:"ref,omitempty"`
+}
+
 type CreateRulesetParams struct {
 	Name        string        `json:"name,omitempty"`
 	Description string        `json:"description,omitempty"`
@@ -789,7 +802,7 @@ func (api *API) CreateRuleset(ctx context.Context, rc *ResourceContainer, params
 	if err != nil {
 		return Ruleset{}, err
 	}
-
+	
 	result := CreateRulesetResponse{}
 	if err := json.Unmarshal(res, &result); err != nil {
 		return Ruleset{}, fmt.Errorf("%s: %w", errUnmarshalError, err)
@@ -876,6 +889,46 @@ func (api *API) UpdateEntrypointRuleset(ctx context.Context, rc *ResourceContain
 	if err != nil {
 		return Ruleset{}, err
 	}
+
+	result := GetRulesetResponse{}
+	if err := json.Unmarshal(res, &result); err != nil {
+		return Ruleset{}, fmt.Errorf("%s: %w", errUnmarshalError, err)
+	}
+
+	return result.Result, nil
+}
+
+// CreateRulesetRule create a rule within ruleset
+//
+// API reference: https://developers.cloudflare.com/api/operations/createZoneRulesetRule
+// API reference: https://developers.cloudflare.com/api/operations/createAccountRulesetRule
+func (api *API) CreateRulesetRule(ctx context.Context, rc *ResourceContainer, params CreateRuleParams) (Ruleset, error) {
+	if params.RulesetID == "" {
+		return Ruleset{}, ErrMissingRulesetID
+	}
+
+	uri := fmt.Sprintf("/%s/%s/rulesets/%s/rules", rc.Level, rc.Identifier, params.RulesetID)
+	res, err := api.makeRequestContext(ctx, http.MethodPost, uri, params)
+	if err != nil {
+		return Ruleset{}, err
+	}
+
+	result := GetRulesetResponse{}
+	if err := json.Unmarshal(res, &result); err != nil {
+		return Ruleset{}, fmt.Errorf("%s: %w", errUnmarshalError, err)
+	}
+
+	return result.Result, nil
+}
+
+// DeleteRulesetRule // TODO:
+func (api *API) DeleteRulesetRule(ctx context.Context, rc *ResourceContainer, rulesetID string, ruleID string) (Ruleset, error) {
+	uri := fmt.Sprintf("/%s/%s/rulesets/%s/rules/%s", rc.Level, rc.Identifier, rulesetID, ruleID)
+	res, err := api.makeRequestContext(ctx, http.MethodDelete, uri, nil)
+	if err != nil {
+		return Ruleset{}, err
+	}
+
 
 	result := GetRulesetResponse{}
 	if err := json.Unmarshal(res, &result); err != nil {
